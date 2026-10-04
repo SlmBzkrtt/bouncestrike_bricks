@@ -3,12 +3,16 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 
-/// Multi-channel polyphonic arcade synthesizer & sound effects service.
+/// Ultra-low-overhead polyphonic arcade synthesizer & sound effects service.
 ///
-/// Synthesizes 16-bit 22050Hz PCM WAV sound effects once at startup into
-/// `Directory.systemTemp` and uses a round-robin pool of [AudioPlayer]
-/// channels for ball impacts alongside dedicated event channels (shoot,
-/// brick break, laser beam, pickup chime, and bomb explosion).
+/// Key FPS/main-thread optimizations:
+/// 1. Pre-loads `DeviceFileSource` on every [AudioPlayer] once during [init]
+///    and sets [ReleaseMode.stop] so runtime playback only invokes
+///    `player.seek(Duration.zero)` + `player.resume()` instead of re-opening
+///    AVPlayerItem / MediaPlayer files on every hit!
+/// 2. Enforces a strict 110ms minimum interval on ball hits (~9/sec max) so
+///    platform channel messages never saturate the macOS/iOS main thread when
+///    50-100 balls are bouncing simultaneously.
 class AudioService {
   static const int _hitPoolSize = 4;
   final List<AudioPlayer> _hitPool =
@@ -28,20 +32,15 @@ class AudioService {
   int _lastShootSoundMs = 0;
   int _lastLaserSoundMs = 0;
   int _lastBreakSoundMs = 0;
-
-  Source? _shootSource;
-  final List<Source> _hitSources = [];
-  Source? _breakSource;
-  Source? _laserSource;
-  Source? _pickupSource;
-  Source? _boomSource;
+  int _lastPickupSoundMs = 0;
+  int _lastBoomSoundMs = 0;
 
   Future<void> init({bool muted = false}) async {
     isMuted = muted;
 
     try {
       final tempDir = Directory(
-        '${Directory.systemTemp.path}/bouncestrike_sfx_v2',
+        '${Directory.systemTemp.path}/bouncestrike_sfx_v3',
       );
       if (!await tempDir.exists()) {
         await tempDir.create(recursive: true);
@@ -55,40 +54,41 @@ class AudioService {
         volume: 0.65,
       );
 
-      // 2. Four harmonic hit notes (C5, E5, G5, A5) for musical combo feedback
+      // 2. Four harmonic hit notes (C5, E5, G5, A5) pre-bound to 4 dedicated players
       const hitFreqs = <double>[523.25, 659.25, 783.99, 880.00];
-      _hitSources.clear();
-      for (int i = 0; i < hitFreqs.length; i++) {
+      for (int i = 0; i < _hitPoolSize; i++) {
         final wav = _synthesizeWoodMarimbaHitWav(
-          freqHz: hitFreqs[i],
+          freqHz: hitFreqs[i % hitFreqs.length],
           durationMs: 45,
         );
         final file = File('${tempDir.path}/hit_$i.wav');
         await file.writeAsBytes(wav, flush: true);
-        _hitSources.add(DeviceFileSource(file.path));
+        await _hitPool[i].setReleaseMode(ReleaseMode.stop);
+        await _hitPool[i].setVolume(0.28);
+        await _hitPool[i].setSource(DeviceFileSource(file.path));
       }
 
-      // 3. Brick Shatter / Break (Crisp high pop + harmonic overtone)
-      final breakWav = _synthesizeBreakWav(durationMs: 85);
+      // 3. Brick Shatter / Break
+      final breakWav = _synthesizeBreakWav(durationMs: 80);
 
-      // 4. Laser Zap (Sci-fi downward frequency sweep 1450Hz -> 280Hz)
+      // 4. Laser Zap
       final laserWav = _synthesizeSweepWav(
         startFreq: 1450,
         endFreq: 280,
-        durationMs: 95,
+        durationMs: 90,
         volume: 0.70,
         addHarmonic: true,
       );
 
-      // 5. Pickup Chime (Two-note ascending arcade arpeggio: A5 -> E6)
+      // 5. Pickup Chime
       final pickupWav = _synthesizeTwoNoteChimeWav(
         firstFreq: 880.0,
         secondFreq: 1318.5,
-        durationMs: 120,
+        durationMs: 115,
       );
 
-      // 6. Explosion / Boss Destruction (Deep sub-bass punch + rumble)
-      final boomWav = _synthesizeExplosionWav(durationMs: 180);
+      // 6. Explosion / Boss Destruction
+      final boomWav = _synthesizeExplosionWav(durationMs: 170);
 
       final shootFile = File('${tempDir.path}/shoot.wav');
       final breakFile = File('${tempDir.path}/break.wav');
@@ -102,20 +102,11 @@ class AudioService {
       await pickupFile.writeAsBytes(pickupWav, flush: true);
       await boomFile.writeAsBytes(boomWav, flush: true);
 
-      _shootSource = DeviceFileSource(shootFile.path);
-      _breakSource = DeviceFileSource(breakFile.path);
-      _laserSource = DeviceFileSource(laserFile.path);
-      _pickupSource = DeviceFileSource(pickupFile.path);
-      _boomSource = DeviceFileSource(boomFile.path);
-
-      await Future.wait([
-        for (final p in _hitPool) p.setReleaseMode(ReleaseMode.stop),
-        _shootPlayer.setReleaseMode(ReleaseMode.stop),
-        _breakPlayer.setReleaseMode(ReleaseMode.stop),
-        _laserPlayer.setReleaseMode(ReleaseMode.stop),
-        _pickupPlayer.setReleaseMode(ReleaseMode.stop),
-        _boomPlayer.setReleaseMode(ReleaseMode.stop),
-      ]);
+      await _configurePlayer(_shootPlayer, shootFile.path, volume: 0.20);
+      await _configurePlayer(_breakPlayer, breakFile.path, volume: 0.40);
+      await _configurePlayer(_laserPlayer, laserFile.path, volume: 0.36);
+      await _configurePlayer(_pickupPlayer, pickupFile.path, volume: 0.46);
+      await _configurePlayer(_boomPlayer, boomFile.path, volume: 0.58);
 
       _initialized = true;
     } catch (_) {
@@ -123,68 +114,78 @@ class AudioService {
     }
   }
 
-  /// Played when the launcher fires a ball.
-  void playShoot() {
-    if (isMuted || !_initialized || _shootSource == null) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastShootSoundMs < 75) return;
-    _lastShootSoundMs = now;
-    _safePlay(_shootPlayer, _shootSource!, volume: 0.22);
+  Future<void> _configurePlayer(
+    AudioPlayer player,
+    String filePath, {
+    required double volume,
+  }) async {
+    await player.setReleaseMode(ReleaseMode.stop);
+    await player.setVolume(volume);
+    await player.setSource(DeviceFileSource(filePath));
   }
 
-  /// Played when a ball bounces off a brick. Uses a 4-player polyphonic pool
-  /// and steps through a pentatonic chord based on [combo] so hits feel
-  /// responsive and musical without cutting each other off.
-  void playHit({int combo = 0}) {
-    if (isMuted || !_initialized || _hitSources.isEmpty) return;
+  /// Played when the launcher fires a ball (throttled to max ~5/sec).
+  void playShoot() {
+    if (isMuted || !_initialized) return;
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastHitSoundMs < 42) return;
+    if (now - _lastShootSoundMs < 180) return;
+    _lastShootSoundMs = now;
+    _replayPreloaded(_shootPlayer);
+  }
+
+  /// Played when a ball bounces off a brick (throttled to max ~9/sec).
+  void playHit({int combo = 0}) {
+    if (isMuted || !_initialized) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastHitSoundMs < 110) return;
     _lastHitSoundMs = now;
 
     final player = _hitPool[_hitPoolIndex];
-    _hitPoolIndex = (_hitPoolIndex + 1) % _hitPool.length;
-    final source = _hitSources[combo % _hitSources.length];
-    _safePlay(player, source, volume: 0.30);
+    _hitPoolIndex = (_hitPoolIndex + 1) % _hitPoolSize;
+    _replayPreloaded(player);
   }
 
-  /// Played when a brick's HP reaches 0 and shatters.
+  /// Played when a brick's HP reaches 0 and shatters (throttled to max ~7/sec).
   void playBrickBreak() {
-    if (isMuted || !_initialized || _breakSource == null) return;
+    if (isMuted || !_initialized) return;
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastBreakSoundMs < 55) return;
+    if (now - _lastBreakSoundMs < 140) return;
     _lastBreakSoundMs = now;
-    _safePlay(_breakPlayer, _breakSource!, volume: 0.42);
+    _replayPreloaded(_breakPlayer);
   }
 
   /// Played when a horizontal, vertical, or cross laser beam fires.
   void playLaser() {
-    if (isMuted || !_initialized || _laserSource == null) return;
+    if (isMuted || !_initialized) return;
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastLaserSoundMs < 80) return;
+    if (now - _lastLaserSoundMs < 150) return;
     _lastLaserSoundMs = now;
-    _safePlay(_laserPlayer, _laserSource!, volume: 0.38);
+    _replayPreloaded(_laserPlayer);
   }
 
   /// Played when collecting +1 Ball, +3 MultiBall, or Gold Coins.
   void playPickup() {
-    if (isMuted || !_initialized || _pickupSource == null) return;
-    _safePlay(_pickupPlayer, _pickupSource!, volume: 0.48);
+    if (isMuted || !_initialized) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastPickupSoundMs < 120) return;
+    _lastPickupSoundMs = now;
+    _replayPreloaded(_pickupPlayer);
   }
 
   /// Played on bomb detonations, boss kills, or danger-zone impact.
   void playExplosion() {
-    if (isMuted || !_initialized || _boomSource == null) return;
-    _safePlay(_boomPlayer, _boomSource!, volume: 0.60);
+    if (isMuted || !_initialized) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastBoomSoundMs < 180) return;
+    _lastBoomSoundMs = now;
+    _replayPreloaded(_boomPlayer);
   }
 
-  Future<void> _safePlay(
-    AudioPlayer player,
-    Source source, {
-    required double volume,
-  }) async {
+  /// Replays an already pre-loaded [AudioPlayer] without re-setting its source!
+  Future<void> _replayPreloaded(AudioPlayer player) async {
     try {
-      await player.stop();
-      await player.play(source, volume: volume);
+      await player.seek(Duration.zero);
+      await player.resume();
     } catch (_) {}
   }
 

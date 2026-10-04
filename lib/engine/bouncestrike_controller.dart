@@ -63,12 +63,18 @@ class BounceStrikeController extends ChangeNotifier {
   // Entities & Projectiles
   int _nextEntityId = 1;
   final List<GridEntity> entities = [];
+  /// O(1) spatial lookup grid indexed by `row * cols + col` for instant collision checks.
+  final List<GridEntity?> _spatialGrid =
+      List<GridEntity?>.filled(cols * (rows + 2), null);
+
   final List<Ball> activeBalls = [];
   int ballsRemainingToSpawn = 0;
   double _spawnTimer = 0.0;
 
-  // Turn timer & Fast-Forward
+  // Turn timer, pulse phase & Fast-Forward
   double turnElapsedSeconds = 0.0;
+  double pulseValue = 0.0;
+  double _pulseTime = 0.0;
   int speedMultiplier = 1;
 
   // Sliding animation state
@@ -426,8 +432,21 @@ class BounceStrikeController extends ChangeNotifier {
   // MAIN GAME TICK (DECOUPLED CANVAS vs UI REBUILD)
   // ---------------------------------------------------------------------------
 
+  void _rebuildSpatialGrid() {
+    _spatialGrid.fillRange(0, _spatialGrid.length, null);
+    for (final e in entities) {
+      if (e.col >= 0 && e.col < cols && e.row >= 0 && e.row < rows + 2) {
+        _spatialGrid[e.row * cols + e.col] = e;
+      }
+    }
+  }
+
   void update(double dt) {
-    final safeDt = dt.clamp(0.0, 0.05);
+    final safeDt = dt.clamp(0.0, 0.033);
+
+    // Smooth 0.0 <-> 1.0 triangle wave for ambient animations (replaces extra AnimationController)
+    _pulseTime = (_pulseTime + safeDt * 1.15) % 2.0;
+    pulseValue = _pulseTime <= 1.0 ? _pulseTime : 2.0 - _pulseTime;
 
     _updateVisualEffects(safeDt);
 
@@ -439,12 +458,8 @@ class BounceStrikeController extends ChangeNotifier {
     } else if (phase == TurnPhase.slidingDown) {
       _updateSlidingPhase(safeDt);
       _markCanvasDirty();
-    } else if (particles.isNotEmpty ||
-        laserBeams.isNotEmpty ||
-        shockwaves.isNotEmpty ||
-        lightningArcs.isNotEmpty ||
-        floatingTexts.isNotEmpty ||
-        screenShake > 0) {
+    } else {
+      // Aiming or GameOver: still tick ambient theme animations smoothly
       _markCanvasDirty();
     }
   }
@@ -513,7 +528,7 @@ class BounceStrikeController extends ChangeNotifier {
       p.velocity =
           Offset(p.velocity.dx * 0.93, p.velocity.dy * 0.93 + 420 * dt);
       p.rotation += p.angularVelocity * dt;
-      p.life -= dt * 2.1;
+      p.life -= dt * 2.4;
       if (p.life <= 0) {
         particles.removeAt(i);
       }
@@ -522,7 +537,7 @@ class BounceStrikeController extends ChangeNotifier {
     for (int i = floatingTexts.length - 1; i >= 0; i--) {
       final ft = floatingTexts[i];
       ft.position += Offset(0, -110.0 * dt);
-      ft.life -= dt * 1.35;
+      ft.life -= dt * 1.45;
       if (ft.life <= 0) {
         floatingTexts.removeAt(i);
       }
@@ -539,15 +554,19 @@ class BounceStrikeController extends ChangeNotifier {
       }
     }
 
-    final double maxStepDistance = math.max(4.5, ballRadius * 0.70);
+    _rebuildSpatialGrid();
+
+    // Cap subSteps to max 5 so 100+ balls at 4x speed never cause CPU frame drops
+    final double maxStepDistance = math.max(9.0, ballRadius * 0.85);
     final int subSteps =
-        math.max(1, ((ballSpeed * dt) / maxStepDistance).ceil()).clamp(1, 24);
+        math.max(1, ((ballSpeed * dt) / maxStepDistance).ceil()).clamp(1, 5);
     final double subDt = dt / subSteps;
 
     bool uiDirty = false;
 
     for (int step = 0; step < subSteps; step++) {
-      for (final ball in activeBalls) {
+      for (int bIdx = 0; bIdx < activeBalls.length; bIdx++) {
+        final ball = activeBalls[bIdx];
         if (ball.isReturned) {
           if (nextLaunchX != null) {
             final diff = nextLaunchX! - ball.position.dx;
@@ -603,9 +622,12 @@ class BounceStrikeController extends ChangeNotifier {
       }
     }
 
-    for (final ball in activeBalls) {
-      if (!ball.isReturned) {
-        ball.recordTrail();
+    // Record trail only when ball count is moderate to avoid thousands of drawLine calls
+    if (activeBalls.length <= 35) {
+      for (final ball in activeBalls) {
+        if (!ball.isReturned) {
+          ball.recordTrail();
+        }
       }
     }
 
@@ -633,72 +655,87 @@ class BounceStrikeController extends ChangeNotifier {
     ball.lastBounceY = ball.position.dy;
   }
 
-  /// Returns `true` if a HUD-visible counter (coins, bonusBalls, combo badge) changed.
+  /// O(1) 3x3 neighborhood collision check around the ball's current grid cell.
+  /// Returns `true` ONLY if coins or bonusBalls changed (never on combo changes).
   bool _handleBallEntityInteractions(Ball ball) {
     bool hudChanged = false;
 
-    for (int i = entities.length - 1; i >= 0; i--) {
-      if (i >= entities.length) continue;
-      final entity = entities[i];
+    final int centerCol = (ball.position.dx ~/ cellSize).clamp(0, cols - 1);
+    final int centerRow = (ball.position.dy ~/ cellSize).clamp(0, rows);
 
-      if (entity.isBrick) {
-        final bounced = BounceStrikePhysics.resolveBallBrickCollision(
-          ball,
-          entity,
-          cellSize,
-        );
-        if (bounced) {
-          final currentSpeed = ball.velocity.distance;
-          if (currentSpeed > 1e-4) {
-            ball.velocity = (ball.velocity / currentSpeed) * ballSpeed;
-          }
-          currentTurnCombo++;
-          if (currentTurnCombo > maxCombo) {
-            maxCombo = currentTurnCombo;
-          }
-          if (currentTurnCombo == 5 || currentTurnCombo % 5 == 0) {
-            hudChanged = true;
-          }
+    final int minC = math.max(0, centerCol - 1);
+    final int maxC = math.min(cols - 1, centerCol + 1);
+    final int minR = math.max(0, centerRow - 1);
+    final int maxR = math.min(rows + 1, centerRow + 1);
 
-          audio.playHit(combo: currentTurnCombo);
+    for (int r = minR; r <= maxR; r++) {
+      final int rowOffset = r * cols;
+      for (int c = minC; c <= maxC; c++) {
+        final entity = _spatialGrid[rowOffset + c];
+        if (entity == null) continue;
 
-          _addParticlesCapped(
-            Particle.burst(
-              origin: ball.position,
-              color: selectedSkin.glowColor,
-              count: 3,
-              speed: 260.0,
-            ),
+        if (entity.isBrick) {
+          final bounced = BounceStrikePhysics.resolveBallBrickCollision(
+            ball,
+            entity,
+            cellSize,
           );
+          if (bounced) {
+            final currentSpeed = ball.velocity.distance;
+            if (currentSpeed > 1e-4) {
+              ball.velocity = (ball.velocity / currentSpeed) * ballSpeed;
+            }
+            currentTurnCombo++;
+            if (currentTurnCombo > maxCombo) {
+              maxCombo = currentTurnCombo;
+            }
 
-          // 1 ball strictly deals 1 HP damage
-          if (_damageBrick(entity, 1)) {
-            hudChanged = true;
-          }
+            audio.playHit(combo: currentTurnCombo);
 
-          if (entity.hp > 0 &&
-              entity.modifier == BrickModifier.electric &&
-              _rng.nextDouble() < 0.45) {
-            _triggerElectricChain(entity);
-          }
-          break;
-        }
-      } else if (entity.isItem) {
-        final rect =
-            BounceStrikePhysics.cellRect(entity.col, entity.visualRow, cellSize);
-        final center = rect.center;
-        final pickupRadius = cellSize * 0.30 + ball.radius;
-        final distSq = (ball.position - center).distanceSquared;
+            // Spawn hit sparks only if particle count is low to keep 60-120 FPS
+            if (particles.length < 36) {
+              _addParticlesCapped(
+                Particle.burst(
+                  origin: ball.position,
+                  color: selectedSkin.glowColor,
+                  count: 2,
+                  speed: 240.0,
+                ),
+              );
+            }
 
-        if (distSq <= pickupRadius * pickupRadius) {
-          if (!entity.overlappingBallIds.contains(ball.id)) {
-            entity.overlappingBallIds.add(ball.id);
-            if (_triggerItem(entity, ball, center)) {
+            // 1 ball strictly deals 1 HP damage
+            if (_damageBrick(entity, 1)) {
               hudChanged = true;
             }
+
+            if (entity.hp > 0 &&
+                entity.modifier == BrickModifier.electric &&
+                _rng.nextDouble() < 0.45) {
+              _triggerElectricChain(entity);
+            }
+            return hudChanged;
           }
-        } else {
-          entity.overlappingBallIds.remove(ball.id);
+        } else if (entity.isItem) {
+          final rect = BounceStrikePhysics.cellRect(
+            entity.col,
+            entity.visualRow,
+            cellSize,
+          );
+          final center = rect.center;
+          final pickupRadius = cellSize * 0.30 + ball.radius;
+          final distSq = (ball.position - center).distanceSquared;
+
+          if (distSq <= pickupRadius * pickupRadius) {
+            if (!entity.overlappingBallIds.contains(ball.id)) {
+              entity.overlappingBallIds.add(ball.id);
+              if (_triggerItem(entity, ball, center)) {
+                hudChanged = true;
+              }
+            }
+          } else {
+            entity.overlappingBallIds.remove(ball.id);
+          }
         }
       }
     }
@@ -716,6 +753,12 @@ class BounceStrikeController extends ChangeNotifier {
 
     if (brick.hp <= 0) {
       entities.remove(brick);
+      if (brick.col >= 0 &&
+          brick.col < cols &&
+          brick.row >= 0 &&
+          brick.row < rows + 2) {
+        _spatialGrid[brick.row * cols + brick.col] = null;
+      }
       final baseColor = colorForHp(brick.maxHp);
 
       _addParticlesCapped(
@@ -845,10 +888,20 @@ class BounceStrikeController extends ChangeNotifier {
   }
 
   bool _triggerItem(GridEntity item, Ball ball, Offset itemCenter) {
+    void clearGridSlot() {
+      if (item.col >= 0 &&
+          item.col < cols &&
+          item.row >= 0 &&
+          item.row < rows + 2) {
+        _spatialGrid[item.row * cols + item.col] = null;
+      }
+    }
+
     switch (item.itemType!) {
       case ItemType.addBall:
         bonusBallsCollectedThisTurn += 1;
         entities.remove(item);
+        clearGridSlot();
         audio.playPickup();
         shockwaves.add(
           ShockwaveEffect(
@@ -878,6 +931,7 @@ class BounceStrikeController extends ChangeNotifier {
       case ItemType.multiBall:
         bonusBallsCollectedThisTurn += 3;
         entities.remove(item);
+        clearGridSlot();
         audio.playPickup();
         shockwaves.add(
           ShockwaveEffect(
@@ -907,6 +961,7 @@ class BounceStrikeController extends ChangeNotifier {
       case ItemType.coin:
         coins += 4;
         entities.remove(item);
+        clearGridSlot();
         audio.playPickup();
         _addParticlesCapped(
           Particle.burst(

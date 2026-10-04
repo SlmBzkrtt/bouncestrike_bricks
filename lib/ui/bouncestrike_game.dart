@@ -14,10 +14,9 @@ class BounceStrikeGame extends StatefulWidget {
 }
 
 class _BounceStrikeGameState extends State<BounceStrikeGame>
-    with TickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final BounceStrikeController _controller;
   late final Ticker _ticker;
-  late final AnimationController _pulseController;
   late final BounceStrikePainter _gamePainter;
   Duration _lastElapsed = Duration.zero;
 
@@ -28,15 +27,9 @@ class _BounceStrikeGameState extends State<BounceStrikeGame>
 
     _controller = BounceStrikeController();
 
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 850),
-    )..repeat(reverse: true);
-
-    // Single reusable BounceStrikePainter instance driven by Listenable.merge
+    // Single reusable BounceStrikePainter instance driven solely by repaintNotifier
     _gamePainter = BounceStrikePainter(
       controller: _controller,
-      pulseAnimation: _pulseController,
     );
 
     _ticker = createTicker((elapsed) {
@@ -60,7 +53,6 @@ class _BounceStrikeGameState extends State<BounceStrikeGame>
         if (_ticker.isActive) {
           _ticker.stop();
         }
-        _pulseController.stop();
         _controller.audio.pause();
         _lastElapsed = Duration.zero;
         break;
@@ -68,9 +60,6 @@ class _BounceStrikeGameState extends State<BounceStrikeGame>
         _lastElapsed = Duration.zero;
         if (!_ticker.isActive) {
           _ticker.start();
-        }
-        if (!_pulseController.isAnimating) {
-          _pulseController.repeat(reverse: true);
         }
         break;
     }
@@ -80,7 +69,6 @@ class _BounceStrikeGameState extends State<BounceStrikeGame>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _ticker.dispose();
-    _pulseController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -269,37 +257,6 @@ class _BounceStrikeGameState extends State<BounceStrikeGame>
                                       ),
                                     ),
                                   ),
-                                  if (_controller.currentTurnCombo >= 5)
-                                    Positioned(
-                                      top: 6,
-                                      right: 8,
-                                      child: IgnorePointer(
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xCC1A1032),
-                                            borderRadius:
-                                                BorderRadius.circular(14),
-                                            border: Border.all(
-                                              color: const Color(0xFFFFD740),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            _controller.currentTurnCombo >= 40
-                                                ? '⚡ SÜPER KOMBO x${_controller.currentTurnCombo}'
-                                                : '🔥 KOMBO x${_controller.currentTurnCombo}',
-                                            style: const TextStyle(
-                                              color: Color(0xFFFFD740),
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
                                   if (_controller.phase == TurnPhase.shooting)
                                     Positioned(
                                       right: 10,

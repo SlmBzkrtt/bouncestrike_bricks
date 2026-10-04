@@ -16,7 +16,6 @@ import '../models/bouncestrike_models.dart';
 ///    without rebuilding widget trees.
 class BounceStrikePainter extends CustomPainter {
   final BounceStrikeController controller;
-  final Animation<double> pulseAnimation;
 
   // --- Pre-allocated Class-Level Reusable Paint Objects ---
   final Paint _fillPaint = Paint()..style = PaintingStyle.fill;
@@ -43,15 +42,9 @@ class BounceStrikePainter extends CustomPainter {
 
   BounceStrikePainter({
     required this.controller,
-    required this.pulseAnimation,
-  }) : super(
-          repaint: Listenable.merge([
-            controller.repaintNotifier,
-            pulseAnimation,
-          ]),
-        );
+  }) : super(repaint: controller.repaintNotifier);
 
-  double get pulseValue => pulseAnimation.value;
+  double get pulseValue => controller.pulseValue;
 
   TextPainter _getCachedTextPainter({
     required String text,
@@ -74,9 +67,6 @@ class BounceStrikePainter extends CustomPainter {
           fontSize: fontSize,
           fontWeight: FontWeight.w900,
           letterSpacing: -0.5,
-          shadows: const [
-            Shadow(color: Colors.black, blurRadius: 6.0),
-          ],
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -119,6 +109,7 @@ class BounceStrikePainter extends CustomPainter {
     _drawBalls(canvas);
     _drawParticles(canvas);
     _drawFloatingTexts(canvas);
+    _drawComboBadge(canvas, logicalSize);
 
     canvas.restore();
   }
@@ -625,18 +616,13 @@ class BounceStrikePainter extends CustomPainter {
 
     final color = Color.lerp(baseColor, Colors.white, brick.hitFlash * 0.80)!;
 
-    _fillPaint.shader = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        color.withValues(alpha: 0.48),
-        color.withValues(alpha: 0.18),
-      ],
-    ).createShader(rect);
+    // Zero-allocation flat fill (replaces per-brick LinearGradient.createShader)
+    _fillPaint.shader = null;
+    _fillPaint.color = color.withValues(alpha: 0.34);
 
     _strokePaint
-      ..color = color.withValues(alpha: 0.25)
-      ..strokeWidth = 11.0;
+      ..color = color.withValues(alpha: 0.22)
+      ..strokeWidth = 10.0;
 
     _borderPaint
       ..color = color
@@ -652,9 +638,8 @@ class BounceStrikePainter extends CustomPainter {
       canvas.drawRRect(rrect, _borderPaint);
 
       // Top inner 3D glass specular highlight
-      _fillPaint.shader = null;
       _fillPaint.color =
-          Colors.white.withValues(alpha: 0.14 + 0.12 * brick.hitFlash);
+          Colors.white.withValues(alpha: 0.15 + 0.12 * brick.hitFlash);
       final glossRect = RRect.fromRectAndCorners(
         Rect.fromLTWH(
           rect.left + 6,
@@ -695,7 +680,6 @@ class BounceStrikePainter extends CustomPainter {
       }
       textCenter = Offset(sumX / pts.length, sumY / pts.length);
     }
-    _fillPaint.shader = null;
 
     if (brick.damageRatio < 0.55) {
       _strokePaint
@@ -1761,26 +1745,63 @@ class BounceStrikePainter extends CustomPainter {
 
   void _drawFloatingTexts(Canvas canvas) {
     for (final ft in controller.floatingTexts) {
-      final alpha = ft.life.clamp(0.0, 1.0);
+      // Quantize alpha to 10 steps so _textCache doesn't churn on every frame!
+      final quantizedAlpha = ((ft.life.clamp(0.0, 1.0) * 10).round() / 10.0)
+          .clamp(0.1, 1.0);
       final tp = _getCachedTextPainter(
         text: ft.text,
         fontSize: 33.0,
-        color: ft.color.withValues(alpha: alpha),
+        color: ft.color.withValues(alpha: quantizedAlpha),
       );
 
       canvas.save();
       canvas.translate(ft.position.dx, ft.position.dy);
-      final scale = 0.85 + 0.25 * alpha;
+      final scale = 0.85 + 0.25 * quantizedAlpha;
       canvas.scale(scale);
       tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
       canvas.restore();
     }
   }
 
+  void _drawComboBadge(Canvas canvas, Size size) {
+    final combo = controller.currentTurnCombo;
+    if (combo < 5) return;
+
+    final label =
+        combo >= 40 ? '⚡ SÜPER KOMBO x$combo' : '🔥 KOMBO x$combo';
+    final tp = _getCachedTextPainter(
+      text: label,
+      fontSize: 28.0,
+      color: const Color(0xFFFFD740),
+    );
+
+    final badgeRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        size.width - tp.width - 52,
+        18,
+        tp.width + 34,
+        tp.height + 16,
+      ),
+      const Radius.circular(24),
+    );
+    _fillPaint.shader = null;
+    _fillPaint.color = const Color(0xCC1A1032);
+    canvas.drawRRect(badgeRect, _fillPaint);
+
+    _strokePaint
+      ..color = const Color(0xFFFFD740)
+      ..strokeWidth = 3.0;
+    canvas.drawRRect(badgeRect, _strokePaint);
+
+    tp.paint(
+      canvas,
+      Offset(badgeRect.left + 17, badgeRect.top + 8),
+    );
+  }
+
   @override
   bool shouldRepaint(covariant BounceStrikePainter oldDelegate) {
-    return oldDelegate.controller != controller ||
-        oldDelegate.pulseAnimation != pulseAnimation;
+    return oldDelegate.controller != controller;
   }
 }
 
