@@ -385,6 +385,7 @@ class BounceStrikeController extends ChangeNotifier {
     final id = totalBalls - ballsRemainingToSpawn + 1;
     ballsRemainingToSpawn--;
     cannonRecoil = 1.0;
+    audio.playShoot();
 
     final dir = Offset(math.cos(aimAngle), math.sin(aimAngle));
     activeBalls.add(
@@ -659,7 +660,7 @@ class BounceStrikeController extends ChangeNotifier {
             hudChanged = true;
           }
 
-          audio.playHit();
+          audio.playHit(combo: currentTurnCombo);
 
           _addParticlesCapped(
             Particle.burst(
@@ -762,6 +763,8 @@ class BounceStrikeController extends ChangeNotifier {
           ),
         );
         return true;
+      } else {
+        audio.playBrickBreak();
       }
     }
     return false;
@@ -794,6 +797,7 @@ class BounceStrikeController extends ChangeNotifier {
         color: selectedTheme.accentColor,
       ),
     );
+    audio.playLaser();
     _damageBrick(target, 1);
   }
 
@@ -925,18 +929,21 @@ class BounceStrikeController extends ChangeNotifier {
       case ItemType.laserHorizontal:
         item.activatedThisTurn = true;
         item.scale = 1.28;
+        audio.playLaser();
         _fireLaserRow(item.row);
         return false;
 
       case ItemType.laserVertical:
         item.activatedThisTurn = true;
         item.scale = 1.28;
+        audio.playLaser();
         _fireLaserCol(item.col);
         return false;
 
       case ItemType.laserCross:
         item.activatedThisTurn = true;
         item.scale = 1.28;
+        audio.playLaser();
         _fireLaserRow(item.row);
         _fireLaserCol(item.col);
         return false;
@@ -944,6 +951,7 @@ class BounceStrikeController extends ChangeNotifier {
       case ItemType.deflector:
         item.activatedThisTurn = true;
         item.scale = 1.32;
+        audio.playHit(combo: 3);
         final randomAngle =
             (-155.0 + _rng.nextDouble() * 130.0) * (math.pi / 180.0);
         ball.velocity =

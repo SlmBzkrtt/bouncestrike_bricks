@@ -222,6 +222,34 @@ class BounceStrikePainter extends CustomPainter {
           ),
           _strokePaint,
         );
+
+        // Corner arcs & penalty spots for authentic stadium pitch look
+        const cornerR = 28.0;
+        canvas.drawArc(
+          const Rect.fromLTWH(18 - cornerR, 18 - cornerR, cornerR * 2, cornerR * 2),
+          0,
+          math.pi / 2,
+          false,
+          _strokePaint,
+        );
+        canvas.drawArc(
+          Rect.fromLTWH(
+            size.width - 18 - cornerR,
+            18 - cornerR,
+            cornerR * 2,
+            cornerR * 2,
+          ),
+          math.pi / 2,
+          math.pi / 2,
+          false,
+          _strokePaint,
+        );
+        _fillPaint.color = Colors.white.withValues(alpha: 0.45);
+        canvas.drawCircle(
+          Offset(size.width / 2, cellSize * 1.65),
+          6.5,
+          _fillPaint,
+        );
         break;
 
       case GameThemeId.space:
@@ -243,11 +271,19 @@ class BounceStrikePainter extends CustomPainter {
         _fillPaint.color = const Color(0xFF1E2F6F).withValues(alpha: 0.55);
         canvas.drawCircle(planetCenter, cellSize * 0.85, _fillPaint);
 
+        // Second distant moon + orbital ring
+        final moonOrb = Offset(
+          planetCenter.dx - cellSize * 1.45,
+          planetCenter.dy + cellSize * 0.55,
+        );
+        _fillPaint.color = const Color(0xFF7C4DFF).withValues(alpha: 0.40);
+        canvas.drawCircle(moonOrb, cellSize * 0.28, _fillPaint);
+
         canvas.save();
         canvas.translate(planetCenter.dx, planetCenter.dy);
         canvas.rotate(-0.35);
         _strokePaint
-          ..color = const Color(0xFF00E5FF).withValues(alpha: 0.25)
+          ..color = const Color(0xFF00E5FF).withValues(alpha: 0.28)
           ..strokeWidth = 6.5;
         canvas.drawOval(
           Rect.fromCenter(
@@ -259,23 +295,34 @@ class BounceStrikePainter extends CustomPainter {
         );
         canvas.restore();
 
+        // Twinkling stars + animated shooting star streak
         _fillPaint.color =
-            Colors.white.withValues(alpha: 0.28 + 0.15 * pulseValue);
+            Colors.white.withValues(alpha: 0.28 + 0.18 * pulseValue);
         for (int i = 0; i < 24; i++) {
           final sx = ((i * 73) % 97) / 97.0 * size.width;
           final sy = ((i * 41) % 89) / 89.0 * playHeight;
           canvas.drawCircle(
             Offset(sx, sy),
-            (i % 4 == 0) ? 5.0 : 3.2,
+            (i % 4 == 0) ? 5.2 : 3.2,
             _fillPaint,
           );
         }
+        final cometX = size.width * (0.15 + 0.70 * pulseValue);
+        final cometY = playHeight * (0.10 + 0.28 * pulseValue);
+        _strokePaint
+          ..color = const Color(0xFF00E5FF).withValues(alpha: 0.35 * (1.0 - pulseValue))
+          ..strokeWidth = 3.5;
+        canvas.drawLine(
+          Offset(cometX - 55, cometY - 22),
+          Offset(cometX, cometY),
+          _strokePaint,
+        );
         break;
 
       case GameThemeId.ww1:
         final mapCenter = Offset(size.width * 0.5, playHeight * 0.48);
         _strokePaint
-          ..color = const Color(0xFFFFB300).withValues(alpha: 0.14)
+          ..color = const Color(0xFFFFB300).withValues(alpha: 0.15)
           ..strokeWidth = 3.6;
         canvas.drawCircle(mapCenter, cellSize * 1.4, _strokePaint);
         canvas.drawCircle(mapCenter, cellSize * 2.4, _strokePaint);
@@ -291,17 +338,50 @@ class BounceStrikePainter extends CustomPainter {
           mapCenter + const Offset(0, cellSize * 3.7),
           _strokePaint,
         );
+
+        // Rotating radar sweep line + anti-aircraft searchlight beams
+        final sweepAngle = (pulseValue * math.pi * 2.0) - math.pi / 2;
+        final sweepEnd = mapCenter +
+            Offset(math.cos(sweepAngle), math.sin(sweepAngle)) *
+                (cellSize * 3.4);
+        _strokePaint
+          ..color = const Color(0xFFFFB300).withValues(alpha: 0.28)
+          ..strokeWidth = 4.5;
+        canvas.drawLine(mapCenter, sweepEnd, _strokePaint);
+
+        // Sandbag fortification silhouettes along top trench
+        _fillPaint.shader = null;
+        _fillPaint.color = const Color(0xFF3E3528).withValues(alpha: 0.38);
+        for (int s = 0; s < 9; s++) {
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromLTWH(s * cellSize + 8, 8, cellSize - 16, 22),
+              const Radius.circular(8),
+            ),
+            _fillPaint,
+          );
+        }
         break;
 
       case GameThemeId.samurai:
         final moonCenter = Offset(size.width * 0.5, playHeight * 0.24);
         _fillPaint.shader = null;
         _fillPaint.color =
-            const Color(0xFFFF1744).withValues(alpha: 0.16 + 0.05 * pulseValue);
+            const Color(0xFFFF1744).withValues(alpha: 0.18 + 0.06 * pulseValue);
         canvas.drawCircle(moonCenter, cellSize * 1.65, _fillPaint);
 
+        // Distant Mount Fuji / pagoda silhouette
+        final mountainPath = Path()
+          ..moveTo(0, playHeight * 0.55)
+          ..lineTo(size.width * 0.36, playHeight * 0.32)
+          ..lineTo(size.width * 0.64, playHeight * 0.32)
+          ..lineTo(size.width, playHeight * 0.55)
+          ..close();
+        _fillPaint.color = const Color(0xFF1A071B).withValues(alpha: 0.42);
+        canvas.drawPath(mountainPath, _fillPaint);
+
         _strokePaint
-          ..color = const Color(0xFFFF4081).withValues(alpha: 0.22)
+          ..color = const Color(0xFFFF4081).withValues(alpha: 0.26)
           ..strokeWidth = 8.0;
         canvas.drawLine(
           moonCenter + const Offset(-cellSize * 1.4, -cellSize * 0.4),
@@ -324,10 +404,15 @@ class BounceStrikePainter extends CustomPainter {
           _strokePaint,
         );
 
-        _fillPaint.color = const Color(0xFFFF80AB).withValues(alpha: 0.22);
-        for (int i = 0; i < 12; i++) {
-          final px = ((i * 61) % 89) / 89.0 * size.width;
-          final py = ((i * 53) % 83) / 83.0 * playHeight;
+        // Drifting Sakura petals
+        _fillPaint.color = const Color(0xFFFF80AB).withValues(alpha: 0.28);
+        for (int i = 0; i < 14; i++) {
+          final px =
+              (((i * 61) % 89) / 89.0 * size.width + pulseValue * 18.0) %
+                  size.width;
+          final py =
+              (((i * 53) % 83) / 83.0 * playHeight + pulseValue * 12.0) %
+                  playHeight;
           canvas.drawOval(
             Rect.fromCenter(center: Offset(px, py), width: 16, height: 9.5),
             _fillPaint,
@@ -339,13 +424,19 @@ class BounceStrikePainter extends CustomPainter {
         final calderaCenter = Offset(size.width * 0.5, playHeight * 0.48);
         _fillPaint.shader = null;
         _fillPaint.color =
-            const Color(0xFFFF3D00).withValues(alpha: 0.11 + 0.05 * pulseValue);
+            const Color(0xFFFF3D00).withValues(alpha: 0.12 + 0.06 * pulseValue);
         canvas.drawCircle(calderaCenter, cellSize * 2.8, _fillPaint);
+
+        // Glowing arcane rune ring in the volcanic pit
+        _strokePaint
+          ..color = const Color(0xFFFF9100).withValues(alpha: 0.16 + 0.08 * pulseValue)
+          ..strokeWidth = 3.5;
+        canvas.drawCircle(calderaCenter, cellSize * 1.75, _strokePaint);
 
         _strokePaint
           ..color = const Color(0xFFFF6D00)
-              .withValues(alpha: 0.24 + 0.10 * pulseValue)
-          ..strokeWidth = 6.0;
+              .withValues(alpha: 0.26 + 0.12 * pulseValue)
+          ..strokeWidth = 6.5;
         final veinPath = Path()
           ..moveTo(size.width * 0.15, playHeight * 0.12)
           ..lineTo(size.width * 0.38, playHeight * 0.35)
@@ -355,6 +446,17 @@ class BounceStrikePainter extends CustomPainter {
           ..lineTo(size.width * 0.60, playHeight * 0.48)
           ..lineTo(size.width * 0.74, playHeight * 0.82);
         canvas.drawPath(veinPath, _strokePaint);
+
+        // Rising magma embers
+        _fillPaint.color =
+            const Color(0xFFFFD740).withValues(alpha: 0.24 + 0.15 * pulseValue);
+        for (int i = 0; i < 12; i++) {
+          final ex = ((i * 67) % 91) / 91.0 * size.width;
+          final ey =
+              (((i * 47) % 83) / 83.0 * playHeight - pulseValue * 24.0) %
+                  playHeight;
+          canvas.drawCircle(Offset(ex, ey), 4.2, _fillPaint);
+        }
         break;
     }
 
@@ -641,22 +743,29 @@ class BounceStrikePainter extends CustomPainter {
     GameThemeId themeId,
   ) {
     _strokePaint
-      ..color = Colors.white.withValues(alpha: 0.18)
-      ..strokeWidth = 3.0;
+      ..color = Colors.white.withValues(alpha: 0.22)
+      ..strokeWidth = 2.8;
 
     switch (themeId) {
       case GameThemeId.football:
+        // Stadium scoreboard / tactical pitch motif
         final inner = rect.deflate(10.0);
         canvas.drawLine(
           Offset(inner.left, inner.top + 8),
           Offset(inner.right, inner.top + 8),
           _strokePaint,
         );
+        canvas.drawLine(
+          Offset(inner.left, inner.bottom - 8),
+          Offset(inner.right, inner.bottom - 8),
+          _strokePaint,
+        );
         break;
 
       case GameThemeId.ww1:
+        // Armored bunker steel plate with 4 corner rivets + diagonal cross-brace
         _fillPaint.shader = null;
-        _fillPaint.color = Colors.white.withValues(alpha: 0.32);
+        _fillPaint.color = Colors.white.withValues(alpha: 0.35);
         const inset = 12.0;
         canvas.drawCircle(
           rect.topLeft + const Offset(inset, inset),
@@ -678,29 +787,64 @@ class BounceStrikePainter extends CustomPainter {
           3.8,
           _fillPaint,
         );
+        _strokePaint
+          ..color = Colors.black.withValues(alpha: 0.22)
+          ..strokeWidth = 2.4;
+        canvas.drawRect(rect.deflate(8.0), _strokePaint);
         break;
 
       case GameThemeId.samurai:
+        // Japanese Shoji lattice / Katana guard corner brackets
         final inner = rect.deflate(9.0);
         canvas.drawRect(inner, _strokePaint);
+        const cornerLen = 10.0;
+        canvas.drawLine(
+          Offset(inner.left, inner.top + cornerLen),
+          Offset(inner.left + cornerLen, inner.top),
+          _strokePaint,
+        );
+        canvas.drawLine(
+          Offset(inner.right - cornerLen, inner.top),
+          Offset(inner.right, inner.top + cornerLen),
+          _strokePaint,
+        );
         break;
 
       case GameThemeId.magma:
+        // Glowing molten lava fissure veins inside obsidian block
         _strokePaint
-          ..color = const Color(0xFFFFEA00).withValues(alpha: 0.28)
-          ..strokeWidth = 3.8;
+          ..color = const Color(0xFFFFEA00).withValues(alpha: 0.34)
+          ..strokeWidth = 3.5;
         canvas.drawLine(
-          rect.topLeft + const Offset(14, 14),
-          rect.bottomRight + const Offset(-14, -14),
+          rect.topLeft + const Offset(13, 15),
+          rect.center + const Offset(-8, -4),
+          _strokePaint,
+        );
+        canvas.drawLine(
+          rect.bottomRight + const Offset(-13, -15),
+          rect.center + const Offset(8, 4),
           _strokePaint,
         );
         break;
 
       case GameThemeId.space:
+        // Sci-fi tech HUD corner brackets & cyber circuit frame
         final innerRect = rect.deflate(9.5);
         canvas.drawRRect(
           RRect.fromRectAndRadius(innerRect, const Radius.circular(8.0)),
           _strokePaint,
+        );
+        _fillPaint.shader = null;
+        _fillPaint.color = Colors.white.withValues(alpha: 0.36);
+        canvas.drawCircle(
+          innerRect.topLeft + const Offset(6, 6),
+          2.6,
+          _fillPaint,
+        );
+        canvas.drawCircle(
+          innerRect.bottomRight + const Offset(-6, -6),
+          2.6,
+          _fillPaint,
         );
         break;
     }
