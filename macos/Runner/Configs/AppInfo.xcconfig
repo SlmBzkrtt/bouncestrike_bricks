@@ -5,10 +5,10 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = BounceStrike: Quantum Bricks
+PRODUCT_NAME = BounceStrike Quantum Bricks
 
-// The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.selimbozkurt.bouncestrike_bricks
+// The application's bundle identifier (UTI-compliant: alphanumeric, hyphen, period)
+PRODUCT_BUNDLE_IDENTIFIER = com.selimbozkurt.bouncestrike-bricks
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 Selim Bozkurt. All rights reserved.

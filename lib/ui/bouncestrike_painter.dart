@@ -549,6 +549,35 @@ class BounceStrikePainter extends CustomPainter {
       canvas.drawRRect(rrect, _strokePaint);
       canvas.drawRRect(rrect, _borderPaint);
 
+      // Top inner 3D glass specular highlight
+      _fillPaint.shader = null;
+      _fillPaint.color =
+          Colors.white.withValues(alpha: 0.14 + 0.12 * brick.hitFlash);
+      final glossRect = RRect.fromRectAndCorners(
+        Rect.fromLTWH(
+          rect.left + 6,
+          rect.top + 5,
+          rect.width - 12,
+          rect.height * 0.28,
+        ),
+        topLeft: Radius.circular(radius * 0.65),
+        topRight: Radius.circular(radius * 0.65),
+        bottomLeft: const Radius.circular(4),
+        bottomRight: const Radius.circular(4),
+      );
+      canvas.drawRRect(glossRect, _fillPaint);
+
+      // Pulsing aura ring for special/boss modifier bricks
+      if (brick.modifier != BrickModifier.none) {
+        _strokePaint
+          ..color = color.withValues(alpha: 0.22 + 0.25 * pulseValue)
+          ..strokeWidth = 3.2;
+        canvas.drawRRect(
+          rrect.inflate(2.0 + 3.0 * pulseValue),
+          _strokePaint,
+        );
+      }
+
       _drawThemeBrickOrnament(canvas, rect, color, theme.id);
     } else {
       final pts = BounceStrikePhysics.polygonVertices(rect, brick.brickShape!);
@@ -568,11 +597,16 @@ class BounceStrikePainter extends CustomPainter {
 
     if (brick.damageRatio < 0.55) {
       _strokePaint
-        ..color = Colors.white.withValues(alpha: 0.42)
-        ..strokeWidth = 3.5;
+        ..color = Colors.white.withValues(alpha: 0.48)
+        ..strokeWidth = 3.2;
       canvas.drawLine(
-        textCenter + Offset(-rect.width * 0.20, -rect.height * 0.20),
-        textCenter + Offset(rect.width * 0.10, rect.height * 0.14),
+        textCenter + Offset(-rect.width * 0.22, -rect.height * 0.20),
+        textCenter + Offset(rect.width * 0.02, -rect.height * 0.02),
+        _strokePaint,
+      );
+      canvas.drawLine(
+        textCenter + Offset(rect.width * 0.02, -rect.height * 0.02),
+        textCenter + Offset(rect.width * 0.16, rect.height * 0.18),
         _strokePaint,
       );
     }
@@ -906,8 +940,8 @@ class BounceStrikePainter extends CustomPainter {
     for (final beam in controller.laserBeams) {
       final alpha = beam.life.clamp(0.0, 1.0);
       _strokePaint
-        ..color = beam.color.withValues(alpha: alpha * 0.45)
-        ..strokeWidth = cellSize * 0.68 * alpha;
+        ..color = beam.color.withValues(alpha: alpha * 0.30)
+        ..strokeWidth = cellSize * 0.92 * alpha;
 
       final isHoriz = beam.isHorizontal;
       final p1 = isHoriz
@@ -920,11 +954,19 @@ class BounceStrikePainter extends CustomPainter {
               BounceStrikeConstants.dangerRow * cellSize,
             );
 
+      // Outer plasma halo
       canvas.drawLine(p1, p2, _strokePaint);
 
+      // Mid-beam colored energy
       _strokePaint
-        ..color = Colors.white.withValues(alpha: alpha * 0.95)
-        ..strokeWidth = cellSize * 0.20 * alpha;
+        ..color = beam.color.withValues(alpha: alpha * 0.68)
+        ..strokeWidth = cellSize * 0.48 * alpha;
+      canvas.drawLine(p1, p2, _strokePaint);
+
+      // Super-hot white core
+      _strokePaint
+        ..color = Colors.white.withValues(alpha: alpha * 0.96)
+        ..strokeWidth = cellSize * 0.18 * alpha;
       canvas.drawLine(p1, p2, _strokePaint);
     }
   }
@@ -944,7 +986,8 @@ class BounceStrikePainter extends CustomPainter {
     if (dist > 3.0) {
       final dir = delta / dist;
       const spacing = 36.0;
-      for (double d = spacing; d < dist; d += spacing) {
+      final phaseOffset = pulseValue * spacing;
+      for (double d = spacing + phaseOffset * 0.35; d < dist; d += spacing) {
         final pos = preview.start + dir * d;
         canvas.drawCircle(pos, dotRadius, _fillPaint);
       }
@@ -997,12 +1040,15 @@ class BounceStrikePainter extends CustomPainter {
     }
 
     final charX = controller.launchX;
-    final recoilOffset = controller.cannonRecoil * 15.0;
-    final botCenter = Offset(charX, y + 18.0 + recoilOffset);
+    final recoilOffset = controller.cannonRecoil * 16.0;
+    final breathBob = math.sin(pulseValue * math.pi) * 3.5;
+    final botCenter = Offset(charX, y + 18.0 + recoilOffset - breathBob);
 
     canvas.save();
     canvas.translate(botCenter.dx, botCenter.dy);
-    canvas.scale(3.0);
+    final squashX = 3.0 * (1.0 + controller.cannonRecoil * 0.08);
+    final squashY = 3.0 * (1.0 - controller.cannonRecoil * 0.08);
+    canvas.scale(squashX, squashY);
 
     _fillPaint.shader = null;
     _fillPaint.color = theme.accentColor.withValues(alpha: 0.40);
@@ -1024,6 +1070,17 @@ class BounceStrikePainter extends CustomPainter {
     );
     _fillPaint.color = theme.accentColor.withValues(alpha: 0.85);
     canvas.drawRRect(barrelRect, _fillPaint);
+
+    // Muzzle flash ring while firing
+    if (controller.cannonRecoil > 0.15) {
+      _fillPaint.color =
+          skin.glowColor.withValues(alpha: controller.cannonRecoil * 0.75);
+      canvas.drawCircle(
+        const Offset(0, -19),
+        4.5 * controller.cannonRecoil,
+        _fillPaint,
+      );
+    }
     canvas.restore();
 
     final bodyRect = RRect.fromRectAndRadius(

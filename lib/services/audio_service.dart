@@ -1,72 +1,124 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 
 /// Lightweight multi-platform sound effects manager powered by `audioplayers`.
 ///
-/// Generates tiny PCM WAV buffers in memory once at startup so there is zero
-/// disk I/O latency during gameplay, and throttles rapid hit sounds to avoid
-/// audio thread saturation on low-end mobile devices.
+/// Pre-generates tiny PCM WAV files once inside `Directory.systemTemp` (which is
+/// always writable and pre-created across macOS App Sandbox, iOS, and Android)
+/// and pre-loads `DeviceFileSource` on dedicated players. This completely eliminates
+/// `BytesSource` cache-directory `PathNotFoundException` crashes and prevents
+/// concurrent file-write race conditions during rapid ball hits.
 class AudioService {
-  final AudioPlayer _fxPlayer = AudioPlayer();
+  final AudioPlayer _hitPlayer = AudioPlayer();
+  final AudioPlayer _pickupPlayer = AudioPlayer();
+  final AudioPlayer _boomPlayer = AudioPlayer();
+
   bool isMuted = false;
   bool _initialized = false;
+  bool _hitBusy = false;
   int _lastHitSoundMs = 0;
 
-  late final Uint8List _hitWav;
-  late final Uint8List _pickupWav;
-  late final Uint8List _boomWav;
+  Source? _hitSource;
+  Source? _pickupSource;
+  Source? _boomSource;
 
   Future<void> init({bool muted = false}) async {
     isMuted = muted;
-    _hitWav = _synthesizeToneWav(freqHz: 540, durationMs: 36, decay: true);
-    _pickupWav = _synthesizeToneWav(freqHz: 880, durationMs: 65, decay: true);
-    _boomWav = _synthesizeToneWav(freqHz: 150, durationMs: 110, decay: true);
+    final hitWav = _synthesizeToneWav(freqHz: 540, durationMs: 36, decay: true);
+    final pickupWav =
+        _synthesizeToneWav(freqHz: 880, durationMs: 65, decay: true);
+    final boomWav =
+        _synthesizeToneWav(freqHz: 150, durationMs: 110, decay: true);
+
     try {
-      await _fxPlayer.setReleaseMode(ReleaseMode.stop);
+      final tempDir = Directory(
+        '${Directory.systemTemp.path}/bouncestrike_sfx',
+      );
+      if (!await tempDir.exists()) {
+        await tempDir.create(recursive: true);
+      }
+
+      final hitFile = File('${tempDir.path}/hit.wav');
+      final pickupFile = File('${tempDir.path}/pickup.wav');
+      final boomFile = File('${tempDir.path}/boom.wav');
+
+      await hitFile.writeAsBytes(hitWav, flush: true);
+      await pickupFile.writeAsBytes(pickupWav, flush: true);
+      await boomFile.writeAsBytes(boomWav, flush: true);
+
+      _hitSource = DeviceFileSource(hitFile.path);
+      _pickupSource = DeviceFileSource(pickupFile.path);
+      _boomSource = DeviceFileSource(boomFile.path);
+
+      await Future.wait([
+        _hitPlayer.setReleaseMode(ReleaseMode.stop),
+        _pickupPlayer.setReleaseMode(ReleaseMode.stop),
+        _boomPlayer.setReleaseMode(ReleaseMode.stop),
+      ]);
+
       _initialized = true;
     } catch (_) {
-      // Safe fallback in headless test environments
+      // Safe fallback in headless test environments or restricted audio devices
       _initialized = false;
     }
   }
 
   void playHit() {
-    if (isMuted || !_initialized) return;
+    if (isMuted || !_initialized || _hitBusy || _hitSource == null) return;
     final now = DateTime.now().millisecondsSinceEpoch;
-    // Throttle hit audio to max ~14 times/sec to prevent audio thread lag
-    if (now - _lastHitSoundMs < 70) return;
+    // Throttle hit audio to max ~11 times/sec to prevent audio thread saturation
+    if (now - _lastHitSoundMs < 90) return;
     _lastHitSoundMs = now;
-    _playBytes(_hitWav, volume: 0.25);
+    _hitBusy = true;
+    _safePlay(_hitPlayer, _hitSource!, volume: 0.25).whenComplete(() {
+      _hitBusy = false;
+    });
   }
 
   void playPickup() {
-    if (isMuted || !_initialized) return;
-    _playBytes(_pickupWav, volume: 0.40);
+    if (isMuted || !_initialized || _pickupSource == null) return;
+    _safePlay(_pickupPlayer, _pickupSource!, volume: 0.40);
   }
 
   void playExplosion() {
-    if (isMuted || !_initialized) return;
-    _playBytes(_boomWav, volume: 0.55);
+    if (isMuted || !_initialized || _boomSource == null) return;
+    _safePlay(_boomPlayer, _boomSource!, volume: 0.55);
   }
 
-  void _playBytes(Uint8List bytes, {required double volume}) {
+  Future<void> _safePlay(
+    AudioPlayer player,
+    Source source, {
+    required double volume,
+  }) async {
     try {
-      _fxPlayer.play(BytesSource(bytes), volume: volume);
-    } catch (_) {}
+      await player.play(source, volume: volume);
+    } catch (_) {
+      // Swallow platform audio errors so gameplay never stutters or crashes
+    }
   }
 
   Future<void> pause() async {
     if (!_initialized) return;
     try {
-      await _fxPlayer.stop();
+      await Future.wait([
+        _hitPlayer.stop(),
+        _pickupPlayer.stop(),
+        _boomPlayer.stop(),
+      ]);
     } catch (_) {}
   }
 
   Future<void> dispose() async {
     if (!_initialized) return;
+    _initialized = false;
     try {
-      await _fxPlayer.dispose();
+      await Future.wait([
+        _hitPlayer.dispose(),
+        _pickupPlayer.dispose(),
+        _boomPlayer.dispose(),
+      ]);
     } catch (_) {}
   }
 
@@ -98,7 +150,7 @@ class AudioService {
     buffer.setUint16(34, 8, Endian.little); // 8-bit
     // "data"
     buffer.setUint32(36, 0x64617461, Endian.big);
-    buffer.setUint32(40, dataSize, Endian.little);
+    buffer.setUint32(36 + 4, dataSize, Endian.little);
 
     for (int i = 0; i < numSamples; i++) {
       final t = i / sampleRate;
