@@ -933,10 +933,21 @@ class BounceStrikePainter extends CustomPainter {
 
       case ItemType.multiBall:
         final ringRadius = baseRadius * (1.02 + 0.14 * pulseValue);
+        _fillPaint.shader = null;
+        _fillPaint.color = theme.accentColor.withValues(alpha: 0.24);
+        canvas.drawCircle(center, ringRadius * 1.15, _fillPaint);
+
         _strokePaint
-          ..color = theme.accentColor
-          ..strokeWidth = 6.5;
+            ..color = theme.accentColor
+            ..strokeWidth = 6.5;
         canvas.drawCircle(center, ringRadius, _strokePaint);
+
+        final tp = _getCachedTextPainter(
+          text: '+3',
+          fontSize: 28,
+          color: Colors.white,
+        );
+        tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
         break;
 
       case ItemType.laserHorizontal:
@@ -1167,7 +1178,7 @@ class BounceStrikePainter extends CustomPainter {
       canvas.drawCircle(targetPos, 11.0, _fillPaint);
     }
 
-    final charX = controller.launchX;
+    final charX = controller.characterVisualX;
     final recoilOffset = controller.cannonRecoil * 16.0;
     final breathBob = math.sin(pulseValue * math.pi) * 3.5;
     final botCenter = Offset(charX, y + 18.0 + recoilOffset - breathBob);

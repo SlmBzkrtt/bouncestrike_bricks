@@ -13,15 +13,15 @@
 
 - **5 Immersive Visual Worlds & Animated Arenas (`lib/models/bouncestrike_models.dart`, `lib/ui/bouncestrike_painter.dart`)**
   Each theme dynamically transforms the arena backdrop, animated atmospheric elements, grid geometry, particle effects, character mascot, and brick skins:
-  1. **Galaktik Uzay (Galactic Space — *Default / Free*)**: Deep-space nebula, ringed planet with orbital moon, twinkling starfield, animated shooting star streaks, cyber-circuit bricks, and alien UFO / photon projectiles.
-  2. **Şampiyonlar Arenası (Soccer / Sports — `600 🪙`)**: Full stadium turf stripes, floodlight beams, corner arcs, penalty box, goal net, scoreboard-ornamented bricks, and soccer/basketball/tennis/eight-ball/golf/dart projectiles.
-  3. **1. Dünya Savaşı (WWI Trench Front — `1,400 🪙`)**: Rotating tactical radar sweep, top-row sandbag fortifications, barbed-wire danger line, riveted steel bunker plates, and artillery/propeller/sniper projectiles.
-  4. **Samuray Dojo (Samurai Dojo — `2,600 🪙`)**: Crimson blood moon, Mount Fuji silhouette, Torii gate, drifting Sakura cherry blossom petals, Shoji-lattice bricks, and shuriken/chakram/kunai/senbon projectiles.
-  5. **Lav Cehennemi (Volcanic Magma — `4,200 🪙`)**: Pulsing volcanic caldera, arcane rune circle, glowing magma veins, rising fire embers, fissured obsidian blocks, and fireball/meteor/plasma-needle projectiles.
+  1. **Siber Uzay (Galactic Space — *Default / Free*)**: Deep-space nebula, ringed planet with orbital moon, twinkling starfield, animated shooting star streaks, cyber-circuit bricks, and alien UFO / photon projectiles.
+  2. **Şampiyonlar Arenası (Soccer / Sports — `110 $`)**: Full stadium turf stripes, floodlight beams, corner arcs, penalty box, goal net, scoreboard-ornamented bricks, and soccer/basketball/tennis/eight-ball/golf/dart projectiles.
+  3. **1. Dünya: Cephe Hattı (WWI Trench Front — `160 $`)**: Rotating tactical radar sweep, top-row sandbag fortifications, barbed-wire danger line, riveted steel bunker plates, and artillery/propeller/sniper projectiles.
+  4. **Samuray & Ninja (Samurai Dojo — `210 $`)**: Crimson blood moon, Mount Fuji silhouette, Torii gate, drifting Sakura cherry blossom petals, Shoji-lattice bricks, and shuriken/chakram/kunai/senbon projectiles.
+  5. **Magma Krateri (Volcanic Magma — `260 $`)**: Pulsing volcanic caldera, arcane rune circle, glowing magma veins, rising fire embers, fissured obsidian blocks, and fireball/meteor/plasma-needle projectiles.
 
 - **30 Shrinking Projectiles (`%100` → `%34` Radius)**
-  - Every theme features **6 specialized projectiles** (`5 themes × 6 balls = 30 balls`).
-  - As you unlock higher-tier projectiles in a theme, the ball radius progressively shrinks from **`30.0 px` (`100%`) down to `10.2 px` (`34%`)** in logical space, allowing balls to thread through tight micro-corridors between bricks and trigger massive top-row cascades.
+  - Every theme features **6 specialized projectiles** (`5 themes × 6 balls = 30 balls`, unlockable between `30 $` and `270 $`).
+  - As you unlock higher-tier projectiles in a theme, the ball radius progressively shrinks from **`24.0 px` (`100%`) down to `8.2 px` (`34%`)** in logical space, allowing balls to thread through tight micro-corridors between bricks and trigger massive top-row cascades.
 
 - **Polyphonic 16-Bit 22050Hz Procedural Audio Engine (`lib/services/audio_service.dart`)**
   - Synthesizes crisp 16-bit PCM WAV buffers at startup with zero runtime disk I/O:

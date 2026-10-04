@@ -1053,7 +1053,6 @@ class BounceStrikeController extends ChangeNotifier {
   void _finishShootingPhase() {
     launchX = (nextLaunchX ?? launchX)
         .clamp(cellSize * 0.45, boardWidth - cellSize * 0.45);
-    characterVisualX = launchX;
     totalBalls += bonusBallsCollectedThisTurn;
     bonusBallsCollectedThisTurn = 0;
     speedMultiplier = 1;
@@ -1239,19 +1238,21 @@ class BounceStrikeController extends ChangeNotifier {
       );
     }
 
-    // 3. Spawn Laser / Deflector / Coin in remaining matrix slot
+    // 3. Spawn Laser / Deflector / MultiBall / Coin in remaining matrix slot
     if (availableCols.isNotEmpty && _rng.nextDouble() < 0.78) {
       final specialCol = availableCols.removeLast();
       final roll = _rng.nextDouble();
       ItemType specialType;
-      if (roll < 0.24) {
+      if (roll < 0.22) {
         specialType = ItemType.laserHorizontal;
-      } else if (roll < 0.48) {
+      } else if (roll < 0.44) {
         specialType = ItemType.laserVertical;
-      } else if (roll < 0.66 && currentLevel >= 4) {
+      } else if (roll < 0.60 && currentLevel >= 4) {
         specialType = ItemType.laserCross;
-      } else if (roll < 0.80) {
+      } else if (roll < 0.74) {
         specialType = ItemType.deflector;
+      } else if (roll < 0.84 && currentLevel >= 6) {
+        specialType = ItemType.multiBall;
       } else {
         specialType = ItemType.coin;
       }
