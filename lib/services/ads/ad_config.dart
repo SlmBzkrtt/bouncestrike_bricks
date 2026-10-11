@@ -61,3 +61,4 @@ abstract final class AdConfig {
   /// Ödüllü reklam yüklenemediğinde yeniden deneme taban süresi (saniye).
   static const int retryBaseDelaySeconds = 2;
 }
+

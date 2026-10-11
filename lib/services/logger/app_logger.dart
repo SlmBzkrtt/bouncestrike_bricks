@@ -29,3 +29,4 @@ abstract final class AppLogger {
     );
   }
 }
+
