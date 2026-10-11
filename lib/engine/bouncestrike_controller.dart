@@ -143,6 +143,14 @@ class BounceStrikeController extends ChangeNotifier {
     storage.setUnlockedSkins(unlockedSkinIds);
   }
 
+  void addCoins(int count) {
+    if (count <= 0) return;
+    coins += count;
+    _savePersistentData();
+    audio.playPickup();
+    notifyListeners();
+  }
+
   bool get isMuted => audio.isMuted;
 
   void toggleMute() {

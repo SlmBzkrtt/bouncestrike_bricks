@@ -3,8 +3,10 @@ import 'package:flutter/scheduler.dart';
 import '../constants/bouncestrike_constants.dart';
 import '../engine/bouncestrike_controller.dart';
 import '../models/bouncestrike_models.dart';
+import '../services/ads/ad_manager.dart';
 import 'bouncestrike_painter.dart';
 import 'bouncestrike_shop_sheet.dart';
+import 'widgets/adaptive_banner_widget.dart';
 
 class BounceStrikeGame extends StatefulWidget {
   const BounceStrikeGame({super.key});
@@ -40,6 +42,9 @@ class _BounceStrikeGameState extends State<BounceStrikeGame>
       _controller.update(dt);
     });
     _ticker.start();
+
+    // Initialize Google AdMob & UMP GDPR / CCPA consent management
+    AdManager.instance.initialize();
   }
 
   @override
@@ -70,6 +75,7 @@ class _BounceStrikeGameState extends State<BounceStrikeGame>
     WidgetsBinding.instance.removeObserver(this);
     _ticker.dispose();
     _controller.dispose();
+    AdManager.instance.dispose();
     super.dispose();
   }
 
@@ -295,6 +301,7 @@ class _BounceStrikeGameState extends State<BounceStrikeGame>
                     RepaintBoundary(
                       child: _buildBottomControlPanel(theme),
                     ),
+                    const AdaptiveBannerWidget(),
                   ],
                 );
               },
@@ -718,7 +725,11 @@ class _BounceStrikeGameState extends State<BounceStrikeGame>
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: _controller.startNewGame,
+                    onPressed: () {
+                      AdManager.instance.showInterstitialOnGameOver(
+                        onComplete: _controller.startNewGame,
+                      );
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: theme.accentColor,
                       foregroundColor: Colors.black,

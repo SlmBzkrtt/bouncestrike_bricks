@@ -15,7 +15,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.selimbozkurt.bouncestrike_bricks"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -26,9 +26,10 @@ android {
     defaultConfig {
         applicationId = "com.selimbozkurt.bouncestrike_bricks"
         minSdk = maxOf(21, flutter.minSdkVersion)
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true
     }
 
     signingConfigs {

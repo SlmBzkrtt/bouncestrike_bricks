@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../engine/bouncestrike_controller.dart';
 import '../models/bouncestrike_models.dart';
+import '../services/ads/ad_manager.dart';
 
 class BounceStrikeShopSheet extends StatefulWidget {
   final BounceStrikeController controller;
@@ -84,33 +85,104 @@ class _BounceStrikeShopSheetState extends State<BounceStrikeShopSheet> {
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFD740).withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFFFFD740)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.monetization_on,
-                            color: Color(0xFFFFD740),
-                            size: 17,
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            '${controller.coins} \$',
-                            style: const TextStyle(
-                              color: Color(0xFFFFD740),
-                              fontWeight: FontWeight.w900,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () {
+                            AdManager.instance.showRewardedAd(
+                              onUserEarnedReward: (_) {
+                                controller.addCoins(50);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Tebrikler! +50 Altın kazandınız! 🎉',
+                                      ),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              },
+                              onAdUnavailable: () {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Reklam yükleniyor, lütfen birkaç saniye sonra tekrar deneyin.',
+                                      ),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                }
+                              },
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00E676)
+                                  .withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(20),
+                              border:
+                                  Border.all(color: const Color(0xFF00E676)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.play_circle_filled_rounded,
+                                  color: Color(0xFF00E676),
+                                  size: 16,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  '+50 🪙',
+                                  style: TextStyle(
+                                    color: Color(0xFF00E676),
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFD740)
+                                .withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFFFD740)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.monetization_on,
+                                color: Color(0xFFFFD740),
+                                size: 17,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                '${controller.coins} \$',
+                                style: const TextStyle(
+                                  color: Color(0xFFFFD740),
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
